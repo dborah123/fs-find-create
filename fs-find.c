@@ -2,40 +2,38 @@
  * fs-find.c
  */
 #include <stdio.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/uio.h> // write
+#include <stdlib.h> // malloc
+
+#include </usr/src/sys/ufs/ffs/fs.h>
+#include </usr/src/sys/ufs/ufs/dinode.h>
+#include </usr/src/sys/ufs/ufs/dir.h>
 
 int
 main (int argc, char *argv[]) {
-    printf("Hello world\n");
+    // Open and mmap file of disk dump into memory
+    int fd = open("../partition.img", O_RDONLY);
+    if (fd < 0) {
+        perror("open");
+        return 1;
+    }
 
+    // Allocate space and read dump data into it
+    char *disk;
+    if ((disk = malloc(6000000)) == NULL) {
+        perror("malloc");
+    }
 
-}
+    if (read(fd, disk, 6000000) < 0) {
+        perror("read");
+    }
 
-void
-get_inode(u_int32_t inode_number) {
-    /**
-     * Takes in inode number as a parameter and returns the location of the
-     * inode struct
-     */
-    
-}
+    // Finding the superblock and then root inode
+    struct fs *superblock = disk + SBLOCK_UFS2;
+    printf("Mount point: %s\n", superblock->fs_fsmnt);
 
-char *
-get_data_from_inode(inode *inode) {
-    /**
-     * Takes in inode as parameter. Return pointer to data of inode
-     */
-    int block_number = inode->di_db[0];
-    int offset = offset * 32768;
-
-    return (char *)offset;
-}
-
-void print_direct(direct dir) {
-    /**
-     * Intakes direct and prints all of the directories and files under it
-     */
-
-    inode *inode = get_inode(u_int32_t d_ino);
-
-    int offset = get_data_offset_from_inode(
+    struct ufs2_dinode *root_inode = ino_to_cg(superblock, 2);
+    printf("di_db[0]: %p\n", root_inode->di_db[0]);
 }

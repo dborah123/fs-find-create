@@ -1,0 +1,4 @@
+*.core
+*.o
+fs-find
+fs-cat
