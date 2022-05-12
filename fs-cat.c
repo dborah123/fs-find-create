@@ -13,7 +13,7 @@
 
 void *get_inode_address(struct fs *superblock, void *disk, ino_t inode_num);
 void *get_data_address(struct fs *superblock, void *disk, int data_block);
-void search_directory(
+int search_directory(
     struct fs *superblock,
     void *disk,
     ino_t inode_num,
@@ -85,15 +85,20 @@ search_directory(
     // Getting data address
     struct direct *dir = get_data_address(superblock,disk, inode->di_db[0]);
 
+    int file_found = 0;
+
     while (dir->d_reclen > 0) {
         int res = check_direct_cat(dir, path, file);
         if (res == 1) {
-            search_directory(superblock, disk, dir->d_ino, last_char, 0);
+            file_found = search_directory(superblock, disk, dir->d_ino, last_char, 0);
+            if (file_found) {
+                return 1;
+            }
         }
 
         if (res == 2) {
             print_file(superblock, disk, dir->d_ino);
-            return;
+            return 1;
         }
 
         // Move to next direct struct

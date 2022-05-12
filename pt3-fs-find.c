@@ -14,8 +14,8 @@
 
 void *get_inode_address(struct fs *superblock, void *disk, ino_t inode_num);
 void *get_data_address(struct fs *superblock, void *disk, int data_block);
-void print_directory(struct fs *superblock, void *disk, ino_t inode_num);
 int check_direct(struct direct *dir);
+
 
 int
 main (int argc, char *argv[]) {
@@ -40,37 +40,51 @@ main (int argc, char *argv[]) {
 
     // Finding the superblock and then printing contents of root inode
     struct fs *superblock = (void *)((char*)disk + SBLOCK_UFS2);
-    print_directory(superblock, disk, UFS_ROOTINO);
+}
 
+void print_directory(struct fs *superblock, void *disk, ino_t inode_num) {
+    /**
+     * Prints out full directory
+     */
+    // Getting inode struct
+    struct dinode *inode = get_inode_address(superblock, disk, inode_num);
+
+    // Getting number of direct blocks
+    int num_blocks = inode->di_size;
+    int num_db = num_blocks;
+    if (num_blocks > UFS_NDADDR) {
+        num_db = UFS_NDADDR;
+    }
+
+    int db_num;
+
+    // Iterate thru direct blocks, printing this contents
+    for (int i = 0; i < num_db; i++) {
+        db_num = inode->di_db[db_num];
+        print_directory_blk(superblock, disk, db_num);
+    }
 }
 
 void
-print_directory(
-    struct fs *superblock,
-    void *disk,
-    ino_t inode_num
-) {
+print_directory_blk(superblock, disk, db_num) {
     /**
-     * Intakes the inode of a directory and prints its contents recurively
+     * Prints directories in specified block
      */
-    // Getting inode struct from inode number
-    struct ufs2_dinode *inode = get_inode_address(superblock, disk, inode_num);
+    // Getting data
+    struct direct *dir = get_data_address(superblock, disk, db_num);
 
-    // Getting data address
-    struct direct *dir = get_data_address(superblock, disk, inode->di_db[0]);
-
+    // Iterate thru directs, printing them
+    int res;
     while (dir->d_reclen > 0) {
-        int res = check_direct(dir);
+        res = check_direct(dir);
 
         if (res > 0) {
-            printf("%s\n", dir->d_name);
+            printf("%2\n", dir->d_name);
         }
 
-        // If directory, call print_directory on it
-        if (res == 2) print_directory(superblock, disk, dir->d_ino);
-
-        // Move to next direct struct
-        dir = (struct direct*)((char*)dir + DIRECTSIZ(dir->d_namlen));
+        if (res == 2) {
+            print_directory(superblock, disk, dir->d_ino);
+        }
     }
 }
 
