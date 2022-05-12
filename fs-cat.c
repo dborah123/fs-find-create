@@ -13,8 +13,15 @@
 
 void *get_inode_address(struct fs *superblock, void *disk, ino_t inode_num);
 void *get_data_address(struct fs *superblock, void *disk, int data_block);
-void print_directory(struct fs *superblock, void *disk, ino_t inode_num);
-int check_direct(struct direct *dir);
+void search_directory(
+    struct fs *superblock,
+    void *disk,
+    ino_t inode_num,
+    char *path,
+    int file
+);
+void print_file(struct fs *superblock, void *disk, ino_t inode_num);
+int check_direct_cat(struct direct *dir, char *path, int file);
 
 int
 main (int argc, char *argv[]) {
@@ -23,10 +30,11 @@ main (int argc, char *argv[]) {
         perror("argc != 3");
         return 1;
     }
+    char *partition_name = argv[1];
     char *path = argv[2];
 
     // Open and mmap file of disk dump into memory
-    int fd = open("../partition.img", O_RDONLY);
+    int fd = open(partition_name, O_RDONLY);
     if (fd < 0) {
         perror("open");
         return 1;
@@ -47,13 +55,14 @@ main (int argc, char *argv[]) {
 
     // Finding the superblock and then printing contents of root inode
     struct fs *superblock = (void *)((char*)disk + SBLOCK_UFS2);
-    search_directory(struct fs *superblock, void *disk, char *path);
+    search_directory(superblock, disk, UFS_ROOTINO, path, 0);
 }
 
-void
+int
 search_directory(
     struct fs *superblock,
-    void *disk, ino_t inode_num,
+    void *disk,
+    ino_t inode_num,
     char *path,
     int file
 ) {
@@ -77,21 +86,24 @@ search_directory(
     struct direct *dir = get_data_address(superblock,disk, inode->di_db[0]);
 
     while (dir->d_reclen > 0) {
-        int res = check_direct_cat(dir, path);
-
+        int res = check_direct_cat(dir, path, file);
         if (res == 1) {
             search_directory(superblock, disk, dir->d_ino, last_char, 0);
         }
 
         if (res == 2) {
-            print_file(superblock, disk, ino_t inode_num);
+            print_file(superblock, disk, dir->d_ino);
             return;
         }
+
+        // Move to next direct struct
+        dir = (struct direct*)((char*)dir + DIRECTSIZ(dir->d_namlen));
     }
+    return 0;
 }
 
 int
-check_direct(struct direct *dir, char *path) {
+check_direct_cat(struct direct *dir, char *path, int file) {
     /*
      * Determines whether this directory describes:
      * 0. directory and path do not match
@@ -115,7 +127,13 @@ print_file(struct fs *superblock, void *disk, ino_t inode_num) {
     // Getting data address
     void *data = get_data_address(superblock,disk, inode->di_db[0]);
 
-    printf("%s\n", data);
+    size_t data_size = inode->di_size;
+
+    // Write data to standard out
+    if (!fwrite(data, data_size, 1, stdout)) {
+        perror("write");
+    }
+
 }
 
 void *
