@@ -1,5 +1,5 @@
 /**
- * pt3-fs-find.c
+ * pt3-fs-cat.c
  */
 #include <stdio.h>
 #include <fcntl.h>
@@ -7,6 +7,7 @@
 #include <sys/uio.h> // write
 #include <stdlib.h> // malloc
 #include <sys/stat.h> // stat
+#include <string.h> // strcmp
 
 #include </usr/src/sys/ufs/ffs/fs.h>
 #include </usr/src/sys/ufs/ufs/dinode.h>
@@ -14,15 +15,35 @@
 
 void *get_inode_address(struct fs *superblock, void *disk, ino_t inode_num);
 void *get_data_address(struct fs *superblock, void *disk, int data_block);
-int check_direct(struct direct *dir);
-void print_directory(struct fs *superblock, void *dick, ino_t inode_num, int num_spaces);
-void print_directory_blk(struct fs *superblock, void *disk, int db_num, int num_spaces);
+int check_direct_cat(struct direct *dir, char *path, int file);
+int search_directory(
+    struct fs *superblock,
+    void *disk,
+    ino_t inode_num,
+    char *path,
+    int num_spaces
+);
+int search_directory_blk(
+    struct fs *superblock,
+    void *disk,
+    int db_num, 
+    char *path,
+    int num_spaces
+);
 
 
 int
 main (int argc, char *argv[]) {
+    // Retrieve input path
+    if (argc != 3) {
+        perror("argc != 3");
+        return 1;
+    }
+    char *partition_name = argv[1];
+    char *path = argv[2];
+
     // Open and mmap file of disk dump into memory
-    int fd = open("../partition.img", O_RDONLY);
+    int fd = open(partition_name, O_RDONLY);
     if (fd < 0) {
         perror("open");
         return 1;
@@ -42,10 +63,17 @@ main (int argc, char *argv[]) {
 
     // Finding the superblock and then printing contents of root inode
     struct fs *superblock = (void *)((char*)disk + SBLOCK_UFS2);
-    print_directory(superblock, disk, UFS_ROOTINO, 0);
+    search_directory(superblock, disk, UFS_ROOTINO, path, 0);
 }
 
-void print_directory(struct fs *superblock, void *disk, ino_t inode_num, int num_spaces) {
+int
+search_directory(
+    struct fs *superblock,
+    void *disk,
+    ino_t inode_num,
+    char *path,
+    int file
+) {
     /**
      * Prints out full directory
      */
@@ -61,46 +89,77 @@ void print_directory(struct fs *superblock, void *disk, ino_t inode_num, int num
     for (int i = 0; i < num_db; i++) {
         db_num = inode->di_db[i];
         if (!db_num) break;
-        print_directory_blk(superblock, disk, db_num, num_spaces);
+        if (search_directory_blk(superblock, disk, db_num, path, 0)) {
+            return 1;
+        }
     }
+    return 0;
 }
 
-void
-print_directory_blk(struct fs *superblock, void *disk, int db_num, int num_spaces) {
+int
+search_directory_blk(
+    struct fs *superblock,
+    void *disk,
+    int db_num,
+    char *path,
+    int file
+) {
     /**
-     * Prints directories in specified block
+     * Searches directory block for matching path
      */
+    // Get substring we are looking at
+    char *last_char;
+    if ((last_char = strchr(path, '/')) != NULL) {
+        *last_char = '\0';
+        last_char++;
+        file = 0;
+    } else {
+        file = 1;
+    }
+
     // Getting data
     struct direct *dir = get_data_address(superblock, disk, db_num);
 
     // Iterate thru directs, printing them
-    int res;
+    int res, file_found;
     while (dir->d_reclen > 0) {
-        res = check_direct(dir);
+        res = check_direct_cat(dir, path, file);
 
         if (res == 1) { // Prints file name
-            printf("%*s%s\n", num_spaces, "", dir->d_name);
+            file_found = search_directory(superblock, disk, dir->d_ino, last_char, 0);
+            
+            if (file_found) {
+                return 1;
+            }
         }
 
         if (res == 2) { // Prints directory name and then its contents
-            printf("%*s%s:\n", num_spaces, "", dir->d_name);
-            print_directory(superblock, disk, dir->d_ino, num_spaces+4);
+            print_file(superblock, disk, dir->d_ino);
+            return 1;
         }
 
+        // Move to next direct struct
         dir = (struct direct*)((char*)dir + DIRECTSIZ(dir->d_namlen));
     }
+    return 0;
+}
+
+void
+print_file(struct fs *superblock, char *disk, ino_t d_ino) {
+    // IMPLEMENT
 }
 
 int
-check_direct(struct direct *dir) {
+check_direct_cat(struct direct *dir, char *path, int file) {
     /*
      * Determines whether this directory describes:
-     * 0. free space or hidden file
-     * 1. a directory
-     * 2. a file
+     * 0. directory and path do not match
+     * 1. directories match
+     * 2. file found
      */
-    if (!dir->d_ino || dir->d_name[0] == '.') return 0;
-    if (dir->d_type == DT_DIR) return 2;
+    if (!dir->d_ino || strcmp(path, dir->d_name)!= 0) return 0;
+    if (dir->d_type == DT_REG && file) return 2;
+    if (dir->d_type == DT_DIR && !file) return 1;
     return 1;
 }
 

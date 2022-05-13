@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 #include <sys/uio.h> // write
 #include <sys/stat.h> // stat
+#include <string.h> // strcmp
 
 #include </usr/src/sys/ufs/ffs/fs.h>
 #include </usr/src/sys/ufs/ufs/dinode.h>
@@ -115,7 +116,7 @@ check_direct_cat(struct direct *dir, char *path, int file) {
      * 1. directories match
      * 2. a file found
      */
-    if (!dir->d_ino || strcmp(path, dir->d_name)) return 0;
+    if (!dir->d_ino || strcmp(path, dir->d_name) != 0) return 0;
     if (dir->d_type == DT_REG && file) return 2;
     if (dir->d_type == DT_DIR && !file) return 1;
     return 0;

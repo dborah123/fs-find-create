@@ -1,4 +1,7 @@
 *.core
 *.o
+*.swp
 fs-find
 fs-cat
+pt3-fs-find
+pt3-fs-cat

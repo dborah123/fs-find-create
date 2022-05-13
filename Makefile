@@ -2,7 +2,7 @@ CFLAGS=-g -Wall -pedantic
 LDFLAGS=
 
 .PHONY: all
-all: fs-find fs-cat pt3-fs-find
+all: fs-find fs-cat pt3-fs-find pt3-fs-cat
 
 fs-find: fs-find.o
 	$(CC) $(LDFLAGS) -o $(.TARGET) $(.ALLSRC)
@@ -11,7 +11,10 @@ fs-cat: fs-cat.o
 	$(CC) $(LDFLAGS) -o $(.TARGET) $(.ALLSRC)
 
 pt3-fs-find: pt3-fs-find.o
-	$(CC) $(LDFLAGS) -o $(.TARGET) $(>ALLSRC)
+	$(CC) $(LDFLAGS) -o $(.TARGET) $(.ALLSRC)
+
+pt3-fs-cat: pt3-fs-cat.o
+	$(CC) $(LDFLAGS) -o $(.TARGET) $(.ALLSRC)
 
 .c:.o
 	$(CC) $(CFLAGS) -c -o $(.TARGET) $(.IMPSRC)
