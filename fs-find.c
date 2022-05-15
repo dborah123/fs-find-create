@@ -19,8 +19,14 @@ int check_direct(struct direct *dir);
 
 int
 main (int argc, char *argv[]) {
+    if (argc != 2) {
+        perror("argc != 2");
+        return 0;
+    }
+    char *partition_path = argv[1];
+
     // Open and mmap file of disk dump into memory
-    int fd = open("../partition.img", O_RDONLY);
+    int fd = open(partition_path, O_RDONLY);
     if (fd < 0) {
         perror("open");
         return 1;
@@ -41,7 +47,6 @@ main (int argc, char *argv[]) {
     // Finding the superblock and then printing contents of root inode
     struct fs *superblock = (void *)((char*)disk + SBLOCK_UFS2);
     print_directory(superblock, disk, UFS_ROOTINO);
-
 }
 
 void

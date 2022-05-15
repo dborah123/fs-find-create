@@ -30,6 +30,8 @@ int search_directory_blk(
     char *path,
     int num_spaces
 );
+void print_file(struct fs *superblock, void *disk, ino_t inode_num);
+void print_data_block(struct fs *superblock, void *disk, int db_num, int size);
 
 
 int
@@ -128,9 +130,7 @@ search_directory_blk(
         if (res == 1) { // Prints file name
             file_found = search_directory(superblock, disk, dir->d_ino, last_char, 0);
             
-            if (file_found) {
-                return 1;
-            }
+            if (file_found) return 1;
         }
 
         if (res == 2) { // Prints directory name and then its contents
@@ -145,9 +145,53 @@ search_directory_blk(
 }
 
 void
-print_file(struct fs *superblock, char *disk, ino_t d_ino) {
-    // IMPLEMENT
+print_file(struct fs *superblock, void *disk, ino_t inode_num) {
+    /**
+     * Prints contents of file
+     */
+    // Get inode data
+    struct ufs2_dinode *inode = get_inode_address(superblock, disk, inode_num);
+
+    // Getting number of direct and indirect blocks
+    int total_num_blocks = inode->di_blocks;
+    int num_direct_blocks = total_num_blocks > 12 ? 12 : total_num_blocks;
+    int num_indirect_blocks = total_num_blocks > 12 ? total_num_blocks - 12 : 0;
+
+    // Getting data size
+    int file_size = inode->di_size;
+
+    // Handling direct blocks
+    int db_num;
+    for (int i = 0; i < num_direct_blocks; i++) {
+        db_num = inode->di_db[i];
+        if (!db_num) return;
+
+        // If we are printing remainder of file, return
+        if (file_size < superblock->fs_bsize) {
+            print_data_block(superblock, disk, db_num, file_size); 
+            return;
+        }
+        print_data_block(superblock, disk, db_num, superblock->fs_bsize);
+        file_size -= superblock->fs_bsize;
+    }
+
+    // Handling indirect block
 }
+
+void
+print_data_block(struct fs *superblock, void *disk, int db_num, int size) {
+    /**
+     * Prints the data block specified by the block number
+     */
+    // Get data block address
+    void *data = get_data_address(superblock, disk, db_num);
+
+    // Write data
+    if (!fwrite(data, size, 1, stdout)) {
+        perror("fwrite");
+    }
+}
+
 
 int
 check_direct_cat(struct direct *dir, char *path, int file) {
