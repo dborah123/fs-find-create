@@ -7,12 +7,14 @@ run `make` to build programs
 ./fs-cat [partition.img path] [file path]
 
 WHAT TO KNOW:
-My programs can handle all the direct blocks. Where I am stuck is handling the 
-indirect blocks. I understand that these blocks hold data block numbers for data
-blocks or more indirect blocks. I just don't know what structure they look like
-and how to parse these structures. Adivce on where to find information on this or
-how to print these indirect data blocks out so I could see how they are set up 
-would be much appreciated.
+After going to office hours, I did some work on the assignment, hopefully implementing 
+indirection. I have the basic architecture but am having trouble testing it. 
+Specifically, I find fs-find to be tough to test. fs-cat seems to work as I can create
+a file that is super large easily. Yet, I am having trouble with creating a ton of
+directories to test find. I use bash and can use $(seq 1..30000) in a for loop to create
+directories. But this takes forever and I always end up running out of space. When
+I do a smaller number, I never reach the indirect blocks. Any advice would be 
+appreciated.
 
 Also, my fs-cat's parsing is pretty inflexible. Essentially, you cannot start of end 
 with a '/' in the path name. I would be happy to change this is necessary. But the 
