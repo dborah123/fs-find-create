@@ -13,6 +13,10 @@
 #include </usr/src/sys/ufs/ufs/dinode.h>
 #include </usr/src/sys/ufs/ufs/dir.h>
 
+// For indirection
+#define SINGLE 1
+#define DOUBLE 2
+
 void *get_inode_address(struct fs *superblock, void *partition_start, ino_t inode_num);
 void *get_data_address(struct fs *superblock, void *partition_start, int data_block);
 int check_direct(struct direct *dir);
@@ -29,8 +33,14 @@ void print_directory_blk(
     int blk_size,
     int num_spaces
 );
-
-enum Indirection{SINGLE, DOUBLE, TRIPLE};
+void print_indirect_block(
+    struct fs *superblock,
+    void *partition_start,
+    int db_num,
+    int bytes_left,
+    int indirection_type,
+    int num_spaces
+);
 
 int
 main (int argc, char *argv[]) {
@@ -102,9 +112,35 @@ print_directory(
 
         print_directory_blk(superblock, partition_start, db_num, blk_size, num_spaces);
     }
+    printf("after direct blocksi\n");
+    int bytes_left_after_dbs = inode->di_size - (12 * superblock->fs_bsize);
+    if (!bytes_left_after_dbs) return;
 
-    // Handling indirect block
-    // IMPLEMENT
+    printf("Indirect blocks\n");
+    return;
+
+    // Handling indirect blocks
+    if (!inode->di_ib[0]) return;
+    print_indirect_block(
+        superblock,
+        partition_start,
+        inode->di_ib[0],
+        bytes_left_after_dbs,
+        SINGLE,
+        num_spaces
+    );
+
+    int bytes_left_after_single = bytes_left_after_dbs - (1024 * superblock->fs_bsize);
+
+    if (!inode->di_ib[1]) return;
+    print_indirect_block(
+        superblock,
+        partition_start,
+        inode->di_ib[1],
+        bytes_left_after_single,
+        DOUBLE,
+        num_spaces
+    );
 }
 
 void
@@ -141,19 +177,64 @@ print_directory_blk(
     }
 }
 
-#if 0
+void
 print_indirect_block(
     struct fs *superblock,
     void *partition_start,
     int db_num,
-    Indirection i_type
+    int bytes_left,
+    int indirection_type,
+    int num_spaces
 ) {
     /**
      * Prints indirect blocks
      */
+    // Get indirect datablock
+    ufs2_daddr_t *data = get_data_address(superblock, partition_start, db_num);
 
+    int num_db_nums = superblock->fs_bsize / 8;
+    int in_db_num, bytes_in_block;
+    for (int i = 0; i < num_db_nums; i++) {
+        if (bytes_left <= 0) return;
+        // Get data block number
+        in_db_num = data[i];
+
+        if (indirection_type == SINGLE) {
+            // Getting bytes in block
+            bytes_in_block = bytes_left >= superblock->fs_bsize 
+                            ? superblock->fs_bsize 
+                            : bytes_left;
+
+            print_directory_blk(
+                superblock,
+                partition_start,
+                in_db_num,
+                bytes_in_block,
+                num_spaces
+            );
+
+            bytes_left -= bytes_in_block;
+        }
+
+        if (indirection_type == DOUBLE) {
+            // Getting bytes in block
+            bytes_in_block = bytes_left >= (superblock->fs_bsize * 4096)
+                            ? superblock->fs_bsize * 4096
+                            : bytes_left;
+
+            print_indirect_block(
+                superblock,
+                partition_start,
+                db_num,
+                bytes_left,
+                SINGLE,
+                num_spaces
+            );
+
+            bytes_left -= bytes_in_block;
+        }
+    }
 }
-#endif
 
 int
 check_direct(struct direct *dir) {
