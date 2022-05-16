@@ -7,8 +7,13 @@ run `make` to build programs
 ./fs-cat [partition.img path] [file path]
 
 WHAT TO KNOW:
-My programs can handle the all the direct blocks. Where I am stuck is handling the 
+My programs can handle all the direct blocks. Where I am stuck is handling the 
 indirect blocks. I understand that these blocks hold data block numbers for data
-essentially. I just don't know what structure they look like and how to parse these
-structures. Adivce on where to find information on this or how to print these indirect
-data blocks out would be much appreciated.
+blocks or more indirect blocks. I just don't know what structure they look like
+and how to parse these structures. Adivce on where to find information on this or
+how to print these indirect data blocks out so I could see how they are set up 
+would be much appreciated.
+
+Also, my fs-cat's parsing is pretty inflexible. Essentially, you cannot start of end 
+with a '/' in the path name. I would be happy to change this is necessary. But the 
+program works, (hopefully) fulfilling the conceptual goals of this assignment.
