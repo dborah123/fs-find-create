@@ -1,0 +1,14 @@
+ASSIGNMENT #4
+NAME: Dan Borah
+
+BUILDING/USAGE:
+run `make` to build programs
+./fs-find [partition.img path]
+./fs-cat [partition.img path] [file path]
+
+WHAT TO KNOW:
+My programs can handle the all the direct blocks. Where I am stuck is handling the 
+indirect blocks. I understand that these blocks hold data block numbers for data
+essentially. I just don't know what structure they look like and how to parse these
+structures. Adivce on where to find information on this or how to print these indirect
+data blocks out would be much appreciated.

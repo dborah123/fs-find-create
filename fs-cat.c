@@ -4,9 +4,11 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <sys/uio.h> // write
+#include <sys/uio.h>  // write
+#include <stdlib.h>   // malloc
 #include <sys/stat.h> // stat
-#include <string.h> // strcmp
+#include <string.h>   // strcmp
+#include <stdlib.h>   // exit
 
 #include </usr/src/sys/ufs/ffs/fs.h>
 #include </usr/src/sys/ufs/ufs/dinode.h>
@@ -14,22 +16,32 @@
 
 void *get_inode_address(struct fs *superblock, void *disk, ino_t inode_num);
 void *get_data_address(struct fs *superblock, void *disk, int data_block);
+int check_direct_cat(struct direct *dir, char *path, int file);
 int search_directory(
     struct fs *superblock,
     void *disk,
     ino_t inode_num,
     char *path,
-    int file
+    int num_spaces
+);
+int search_directory_blk(
+    struct fs *superblock,
+    void *disk,
+    int db_num, 
+    char *path,
+    int blk_size,
+    int num_spaces
 );
 void print_file(struct fs *superblock, void *disk, ino_t inode_num);
-int check_direct_cat(struct direct *dir, char *path, int file);
+void print_data_block(struct fs *superblock, void *disk, int db_num, int size);
+
 
 int
 main (int argc, char *argv[]) {
     // Retrieve input path
     if (argc != 3) {
         perror("argc != 3");
-        return 1;
+        exit(1);
     }
     char *partition_name = argv[1];
     char *path = argv[2];
@@ -38,23 +50,24 @@ main (int argc, char *argv[]) {
     int fd = open(partition_name, O_RDONLY);
     if (fd < 0) {
         perror("open");
-        return 1;
+        exit(1);
     }
 
     // Get size of partition.img
     struct stat file_info;
     if (fstat(fd, &file_info) == -1) {
         perror("fstat");
+        exit(1);
     }
     size_t file_size = file_info.st_size;
 
     void *disk = mmap(NULL, file_size, PROT_READ, MAP_SHARED, fd, 0); 
     if (disk == MAP_FAILED) {
         perror("mmap");
-        return 1;
+        exit(1);
     }
 
-    // Finding the superblock and then printing contents of root inode
+    // Finding the superblock and then search for path
     struct fs *superblock = (void *)((char*)disk + SBLOCK_UFS2);
     search_directory(superblock, disk, UFS_ROOTINO, path, 0);
 }
@@ -68,7 +81,44 @@ search_directory(
     int file
 ) {
     /**
-     * Searches directories for matching path
+     * Prints out full directory
+     */
+    // Getting inode struct
+    struct ufs2_dinode *inode = get_inode_address(superblock, disk, inode_num);
+
+    // Getting number of direct blocks
+    int num_db = UFS_NDADDR;
+
+    // Remaining bytes of file after full blocks
+    int bytes_left = inode->di_size % superblock->fs_bsize;
+    int num_blocks = (inode->di_size / superblock->fs_bsize) + 1;
+
+    // Iterate thru direct blocks, printing this contents
+    int db_num, blk_size;
+    for (int i = 0; i < num_db; i++) {
+        db_num = inode->di_db[i];
+        if (!db_num) break;
+
+        // Setting size of block of direct we are searching
+        blk_size = i + 1 < num_blocks ? superblock->fs_bsize : bytes_left; 
+
+        if (search_directory_blk(superblock, disk, db_num, path, blk_size, 0))
+            return 1;
+    }
+    return 0;
+}
+
+int
+search_directory_blk(
+    struct fs *superblock,
+    void *disk,
+    int db_num,
+    char *path,
+    int blk_size,
+    int file
+) {
+    /**
+     * Searches directory block for matching path
      */
     // Get substring we are looking at
     char *last_char;
@@ -76,37 +126,84 @@ search_directory(
         *last_char = '\0';
         last_char++;
         file = 0;
-    } else { // designate that we are looking for a file
+    } else {
         file = 1;
     }
 
-    // Getting inode struct from inode number
-    struct ufs2_dinode *inode = get_inode_address(superblock, disk, inode_num);
+    // Getting data
+    struct direct *dir = get_data_address(superblock, disk, db_num);
 
-    // Getting data address
-    struct direct *dir = get_data_address(superblock,disk, inode->di_db[0]);
+    // Iterate thru directs, printing them
+    int res, file_found, bytes_left = blk_size;
+    while (bytes_left > 0) {
+        res = check_direct_cat(dir, path, file);
 
-    int file_found = 0;
-
-    while (dir->d_reclen > 0) {
-        int res = check_direct_cat(dir, path, file);
-        if (res == 1) {
+        if (res == 1) { // Path matches and directory
             file_found = search_directory(superblock, disk, dir->d_ino, last_char, 0);
-            if (file_found) {
-                return 1;
-            }
+            if (file_found) return 1;
         }
 
-        if (res == 2) {
+        if (res == 2) { // File matches >>> print contents
             print_file(superblock, disk, dir->d_ino);
             return 1;
         }
 
-        // Move to next direct struct
+        // Move to next direct struct and update bytes elft
+        bytes_left -= dir->d_reclen;
         dir = (struct direct*)((char*)dir + DIRECTSIZ(dir->d_namlen));
     }
     return 0;
 }
+
+void
+print_file(struct fs *superblock, void *disk, ino_t inode_num) {
+    /**
+     * Prints contents of file
+     */
+    // Get inode data
+    struct ufs2_dinode *inode = get_inode_address(superblock, disk, inode_num);
+
+    // Getting number of direct and indirect blocks
+    int total_num_blocks = inode->di_blocks;
+    int num_direct_blocks = total_num_blocks > 12 ? 12 : total_num_blocks;
+    int num_indirect_blocks = total_num_blocks > 12 ? total_num_blocks - 12 : 0;
+
+    // Getting data size
+    int file_size = inode->di_size;
+
+    // Handling direct blocks
+    int db_num;
+    for (int i = 0; i < num_direct_blocks; i++) {
+        db_num = inode->di_db[i];
+        if (!db_num) return;
+
+        // If we are printing remainder of file, return
+        if (file_size < superblock->fs_bsize) {
+            print_data_block(superblock, disk, db_num, file_size); 
+            return;
+        }
+        print_data_block(superblock, disk, db_num, superblock->fs_bsize);
+        file_size -= superblock->fs_bsize;
+    }
+
+    // Handling indirect block
+    // IMPLEMENT
+}
+
+void
+print_data_block(struct fs *superblock, void *disk, int db_num, int size) {
+    /**
+     * Prints the data block specified by the block number
+     */
+    // Get data block address
+    void *data = get_data_address(superblock, disk, db_num);
+
+    // Write data
+    if (!fwrite(data, size, 1, stdout)) {
+        perror("fwrite");
+    }
+}
+
 
 int
 check_direct_cat(struct direct *dir, char *path, int file) {
@@ -114,32 +211,12 @@ check_direct_cat(struct direct *dir, char *path, int file) {
      * Determines whether this directory describes:
      * 0. directory and path do not match
      * 1. directories match
-     * 2. a file found
+     * 2. file found
      */
-    if (!dir->d_ino || strcmp(path, dir->d_name) != 0) return 0;
+    if (!dir->d_ino || strcmp(path, dir->d_name)!= 0) return 0;
     if (dir->d_type == DT_REG && file) return 2;
     if (dir->d_type == DT_DIR && !file) return 1;
-    return 0;
-}
-
-void
-print_file(struct fs *superblock, void *disk, ino_t inode_num) {
-    /**
-     * Prints contents of file described by inode
-     */
-    // Getting inode struct from inode number
-    struct ufs2_dinode *inode = get_inode_address(superblock, disk, inode_num);
-
-    // Getting data address
-    void *data = get_data_address(superblock,disk, inode->di_db[0]);
-
-    size_t data_size = inode->di_size;
-
-    // Write data to standard out
-    if (!fwrite(data, data_size, 1, stdout)) {
-        perror("write");
-    }
-
+    return 1;
 }
 
 void *
@@ -152,7 +229,8 @@ get_inode_address(struct fs *superblock, void *disk, ino_t inode_num) {
     int cg_inode_start_offset = lfragtosize(superblock, cg_inode_start_frag);
 
     // Finding the address in inode section of inode we want
-    int inode_offset = ino_to_fsbo(superblock, inode_num) * sizeof(struct ufs2_dinode);
+    int num_inode_in_cg = ino_to_fsbo(superblock, inode_num);
+    int inode_offset = num_inode_in_cg * sizeof(struct ufs2_dinode);
 
     int offset = cg_inode_start_offset + inode_offset;
 
